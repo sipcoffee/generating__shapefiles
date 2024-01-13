@@ -4,12 +4,15 @@ from skimage import measure
 from shapely.geometry import Polygon
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from rasterio.warp import transform_bounds
-from shapely.geometry import box
-from osgeo import gdal
+from shapely.ops import unary_union
+
+
+# Function to calculate the area of each polygon
+def calculate_polygon_area(polygon):
+    # Round the area to 3 decimal points
+    return round(polygon.area, 6)
 
 #from rasterio import features
-
 with rasterio.open('vari/vari.tif') as dataset:
     vari = dataset.read(1).astype(np.float32)
     raster_bounds = dataset.bounds
@@ -22,28 +25,31 @@ with rasterio.open('vari/vari.tif') as dataset:
     print('raster crs', raster_crs)
 
    # Define a threshold for VAR I
-    threshold = 0.3
+    threshold = 0.15
     vari_mask = vari > threshold
 
    # Find contours using skimage
-    contours = measure.find_contours(vari_mask, 0.5)
+    contours = measure.find_contours(vari_mask, 0.2)
    
    # Convert contours to polygons and save to GeoDataFrame
     geometries = []
     for idx, contour in enumerate(contours):
-        polygon = Polygon(contour[:, ::-1])  
-        geometries.append(polygon)
+        polygon = Polygon(contour[:, ::-1])
+        polygon_with_id = (idx + 1, polygon)    
+        geometries.append(polygon_with_id)
       
-   #
-    # Create a GeoDataFrame from the list of Shapely geometries
-    gdf = gpd.GeoDataFrame(geometry=geometries, crs=raster_crs)
+    # Convert contours to polygons and merge them
+    # geometries = [Polygon(contour[:, ::-1]) for contour in contours]
+    # merged_geometry = unary_union(geometries)
 
-    # Ensure shapefile extent matches raster extent
-    # raster_bounds_transformed = transform_bounds(raster_crs, gdf.crs, *raster_bounds)
-    # gdf['geometry'] = gdf['geometry'].translate(
-    #     -raster_bounds[0] + raster_bounds_transformed[0],
-    #     -raster_bounds[1] + raster_bounds_transformed[1]
-    # )
+    #print("merged geom ",merged_geometry)
+    # Create a GeoDataFrame from the list of Shapely geometries
+    gdf = gpd.GeoDataFrame(geometry=[geom[1] for geom in geometries], crs=raster_crs)
+
+    # Create a GeoDataFrame from the merged geometry
+    #gdf = gpd.GeoDataFrame(geometry=[merged_geometry], crs=raster_crs)
+
+    print('gdf', gdf)
 
     # Set shapefile extent to match raster's extent and resolution
     minx, miny, maxx, maxy = raster_bounds
@@ -53,26 +59,39 @@ with rasterio.open('vari/vari.tif') as dataset:
     scale_x = (maxx - minx) / shape_row
     scale_y = (maxy - miny) / shape_col
 
+    # Adjust the x and y origin 
+    adjusted_scale_x = scale_x * 0.985
+    adjusted_scale_y = scale_y * 1.015 
+
     print('dimen', scale_x, scale_y)
     # Set shapefile extent to match raster's extent and resolution
     gdf['geometry'] = gdf['geometry'].translate(
         xoff=minx, yoff=miny
     ).scale(
-        xfact=+scale_x,
-        yfact=-scale_y,
+        xfact=scale_x,
+        yfact=-adjusted_scale_y,
         origin=(minx, maxy)
     )
 
     # Add a unique ID for the transformed bounding box
-    gdf['id'] = 1
+    gdf['id'] = [geom[0] for geom in geometries]
+    # gdf['id'] = 1 
+
+    # Calculate and add area for each polygon
+    gdf['area_sqm'] = gdf['geometry'].apply(lambda geom: calculate_polygon_area(geom))
     
-   # Add a label indicating nitrogen deficiency for the bounding box
+    # Add a label indicating nitrogen deficiency for the bounding box
     gdf['label'] = 'nitrogen_deficient'
 
     print('bounds', gdf.bounds)
     
     print(gdf.head())
 
+# Check and explode MultiPolygons into Polygons if present
+if gdf['geometry'].geom_type.any() == 'MultiPolygon':
+    gdf = gdf.explode()
+    
 #Save GeoDataFrame to a shapefile
-shapefile_path = 'shp/vari_threshold_dd.shp'  # Change this to your desired output path
+shapefile_path = 'shp/1ha_gg.shp'  # Change this to your desired output path
 gdf.to_file(shapefile_path, encoding='utf-8')
+

@@ -1,1 +1,9 @@
 shp/
+grid/
+vari/
+.ipynb_checkpoints/
+zone/
+cleaned/
+index/
+src_raster/
+out_grid/
