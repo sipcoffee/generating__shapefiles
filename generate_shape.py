@@ -9,7 +9,7 @@ from shapely.geometry import box
 
 #from rasterio import features
 
-with rasterio.open('vari/vari.tif') as dataset:
+with rasterio.open('out_raster/filters/green_average_filter_3.tif') as dataset:
    vari = dataset.read(1).astype(np.float32)
    raster_bounds = dataset.bounds
    raster_transform = dataset.transform

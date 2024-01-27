@@ -8,3 +8,5 @@ index/
 src_raster/
 out_grid/
 out_raster/
+output/
+class_shapes/
